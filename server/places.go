@@ -112,20 +112,22 @@ func (s *Server) GetRelatedLocations(ctx context.Context,
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid DCID")
 	}
 
-	sameAncestor := (in.GetWithinPlace() != "")
-	samePlaceType := in.GetSamePlaceType()
-	isPerCapita := in.GetIsPerCapita()
-	prefix := RelatedLocationsPrefixMap[sameAncestor][samePlaceType][isPerCapita]
+	// sameAncestor := (in.GetWithinPlace() != "")
+	// samePlaceType := in.GetSamePlaceType()
+	// isPerCapita := in.GetIsPerCapita()
+	// prefix := RelatedLocationsPrefixMap[sameAncestor][samePlaceType][isPerCapita]
+	prefix := util.BtRelatedLocationsSameTypePrefix
 
 	rowList := bigtable.RowList{}
 	for _, statVarDcid := range in.GetStatVarDcids() {
-		if sameAncestor {
-			rowList = append(rowList, fmt.Sprintf(
-				"%s%s^%s^%s", prefix, in.GetDcid(), in.GetWithinPlace(), statVarDcid))
-		} else {
-			rowList = append(rowList, fmt.Sprintf(
-				"%s%s^%s", prefix, in.GetDcid(), statVarDcid))
-		}
+		rowList = append(rowList, fmt.Sprintf("%s%s^%s^%s", prefix, "*", "Country", statVarDcid))
+		// 	if sameAncestor {
+		// 		rowList = append(rowList, fmt.Sprintf(
+		// 			"%s%s^%s^%s", prefix, in.GetDcid(), in.GetWithinPlace(), statVarDcid))
+		// 	} else {
+		// 		rowList = append(rowList, fmt.Sprintf(
+		// 			"%s%s^%s", prefix, in.GetDcid(), statVarDcid))
+		// 	}
 	}
 	dataMap, err := bigTableReadRowsParallel(ctx, s.btTable, rowList,
 		func(dcid string, jsonRaw []byte) (interface{}, error) {

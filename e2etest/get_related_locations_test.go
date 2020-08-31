@@ -57,6 +57,11 @@ func TestGetRelatedLocations(t *testing.T) {
 			"geoId/06",
 			[]string{"Count_CriminalActivities_CombinedCrime"},
 		},
+		{
+			"top_populations.json",
+			"*",
+			[]string{"Count_Person"},
+		},
 	} {
 		req := &pb.GetRelatedLocationsRequest{
 			Dcid:         c.dcid,
