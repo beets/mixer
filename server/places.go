@@ -76,8 +76,8 @@ func (s *Server) GetPlacesIn(ctx context.Context, in *pb.GetPlacesInRequest) (
 // RelatedLocations cache.
 //
 // The three levels of keys are:
-// - Whether related locaitons have the same ancestor.
-// - Whether related locaitons have the same place type.
+// - Whether related locations have the same ancestor.
+// - Whether related locations have the same place type.
 // - Whether closeness computaion is per capita.
 var RelatedLocationsPrefixMap = map[bool]map[bool]map[bool]string{
 	true: {
@@ -120,14 +120,14 @@ func (s *Server) GetRelatedLocations(ctx context.Context,
 
 	rowList := bigtable.RowList{}
 	for _, statVarDcid := range in.GetStatVarDcids() {
+		// if sameAncestor {
+		// 	rowList = append(rowList, fmt.Sprintf(
+		// 		"%s%s^%s^%s", prefix, in.GetDcid(), in.GetWithinPlace(), statVarDcid))
+		// } else {
+		// 	rowList = append(rowList, fmt.Sprintf(
+		// 		"%s%s^%s", prefix, in.GetDcid(), statVarDcid))
+		// }
 		rowList = append(rowList, fmt.Sprintf("%s%s^%s^%s", prefix, "*", "Country", statVarDcid))
-		// 	if sameAncestor {
-		// 		rowList = append(rowList, fmt.Sprintf(
-		// 			"%s%s^%s^%s", prefix, in.GetDcid(), in.GetWithinPlace(), statVarDcid))
-		// 	} else {
-		// 		rowList = append(rowList, fmt.Sprintf(
-		// 			"%s%s^%s", prefix, in.GetDcid(), statVarDcid))
-		// 	}
 	}
 	dataMap, err := bigTableReadRowsParallel(ctx, s.btTable, rowList,
 		func(dcid string, jsonRaw []byte) (interface{}, error) {
@@ -147,6 +147,62 @@ func (s *Server) GetRelatedLocations(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	results := map[string]*RelatedPlacesInfo{}
+	for statVarDcid, data := range dataMap {
+		if data == nil {
+			results[statVarDcid] = nil
+		} else {
+			results[statVarDcid] = data.(*RelatedPlacesInfo)
+		}
+	}
+	jsonRaw, err := json.Marshal(results)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetRelatedLocationsResponse{Payload: string(jsonRaw)}, nil
+}
+
+// GetStatRankings implements API for Mixer.GetStatRankings.
+func (s *Server) GetLocationsRankings(ctx context.Context,
+	in *pb.GetLocationsRankingsRequest) (*pb.GetRelatedLocationsResponse, error) {
+	if in.GetPlaceType() == "" || len(in.GetStatVarDcids()) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "Missing required arguments")
+	}
+
+	// sameAncestor := (in.GetWithinPlace() != "")
+	prefix := util.BtRelatedLocationsSameTypePrefix
+	// if sameAncestor {
+	// 	prefix = util.BtRelatedLocationsSameTypeAndAncestorPrefix
+	// }
+	rowList := bigtable.RowList{}
+	for _, statVarDcid := range in.GetStatVarDcids() {
+		rowList = append(rowList, fmt.Sprintf("%s%s^%s^%s", prefix, "*", "Country", statVarDcid))
+		// if sameAncestor {
+		// 	rowList = append(rowList, fmt.Sprintf(
+		// 		"%s%s^%s^%s^%s", prefix, "*", in.GetPlaceType(), in.GetWithinPlace(), statVarDcid))
+		// } else {
+		// 	rowList = append(rowList, fmt.Sprintf("%s%s^%s^%s", prefix, "*", in.GetPlaceType(), statVarDcid))
+		// }
+	}
+	dataMap, err := bigTableReadRowsParallel(ctx, s.btTable, rowList,
+		func(dcid string, jsonRaw []byte) (interface{}, error) {
+			var btRelatedPlacesInfo RelatedPlacesInfo
+			err := json.Unmarshal(jsonRaw, &btRelatedPlacesInfo)
+			if err != nil {
+				return nil, err
+			}
+			return &btRelatedPlacesInfo, nil
+		}, func(key string) (string, error) {
+			parts := strings.Split(key, "^")
+			if len(parts) <= 1 {
+				return "", status.Errorf(codes.Internal, "Invalid bigtable row key %s", key)
+			}
+			return parts[len(parts)-1], nil
+		})
+	if err != nil {
+		return nil, err
+	}
+
 	results := map[string]*RelatedPlacesInfo{}
 	for statVarDcid, data := range dataMap {
 		if data == nil {
